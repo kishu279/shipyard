@@ -11,15 +11,33 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Rocket } from "lucide-react";
+import { useSession } from "@/src/lib/auth-client";
+import { useEffect } from "react";
 
 export default function ProjectDetailsPage() {
   const params = useParams();
+  const router = useRouter();
+  const { data: session, isPending } = useSession();
   const username = params.username as string;
   const projectId = params.projectId as string;
+
+  useEffect(() => {
+    if (!isPending && !session) {
+      router.push("/auth");
+    }
+  }, [session, isPending, router]);
+
+  if (isPending) {
+    return <div className="flex min-h-screen items-center justify-center">Loading...</div>;
+  }
+
+  if (!session) {
+    return null;
+  }
 
   return (
     <SidebarProvider>
