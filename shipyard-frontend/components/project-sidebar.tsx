@@ -34,7 +34,15 @@ const items = [
   },
 ]
 
-export function ProjectSidebar() {
+export function ProjectSidebar({ 
+  onCreateWebhook, 
+  onDeploy,
+  onSettings 
+}: { 
+  onCreateWebhook: () => void; 
+  onDeploy: () => void;
+  onSettings: () => void;
+}) {
   const params = useParams();
   const username = params.username as string;
 
@@ -71,16 +79,24 @@ export function ProjectSidebar() {
           <SidebarGroupLabel>Project Management</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {items.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild>
-                    <a href={item.url}>
-                      <item.icon className="size-4" />
-                      <span>{item.title}</span>
-                    </a>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              <SidebarMenuItem>
+                <SidebarMenuButton onClick={onDeploy}>
+                  <Rocket className="size-4" />
+                  <span>Deploy</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton onClick={onCreateWebhook}>
+                  <Webhook className="size-4" />
+                  <span>Create Webhooks</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton onClick={onSettings}>
+                  <Settings className="size-4" />
+                  <span>Settings</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

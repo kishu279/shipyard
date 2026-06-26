@@ -1,3 +1,5 @@
+import { Octokit } from "@octokit/rest";
+
 interface GitHubRepo {
   id: number;
   name: string;
@@ -36,117 +38,114 @@ interface GitHubWebhook {
 }
 
 export async function getAllUserRepos(
-  accessToken: string
-): Promise<GitHubRepo[]> {
-  const repos: GitHubRepo[] = [];
-  let page = 1;
-  const perPage = 100;
+  accessToken: string,
+  page: number = 1,
+  perPage: number = 12,
+): Promise<{ repos: GitHubRepo[]; totalCount: number }> {
+  const octokit = new Octokit({
+    auth: accessToken,
+  });
 
-  while (true) {
-    const response = await fetch(
-      `https://api.github.com/user/repos?page=${page}&per_page=${perPage}&sort=updated`,
+  try {
+    const { data, headers } = await octokit.rest.repos.listForAuthenticatedUser(
       {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          Accept: "application/vnd.github+json",
-          "X-GitHub-Api-Version": "2022-11-28",
-        },
-      }
+        sort: "updated",
+        per_page: perPage,
+        page,
+      },
     );
 
-    if (!response.ok) {
-      throw new Error(`GitHub API error: ${response.statusText}`);
+    const linkHeader = headers.link;
+    let totalCount = data.length;
+
+    if (linkHeader) {
+      const lastPageMatch = linkHeader.match(/page=(\d+)>; rel="last"/);
+      if (lastPageMatch) {
+        totalCount = parseInt(lastPageMatch[1]) * perPage;
+      }
     }
 
-    const data = (await response.json()) as GitHubRepo[];
-
-    if (data.length === 0) break;
-
-    repos.push(...data);
-
-    if (data.length < perPage) break;
-
-    page++;
+    return { repos: data as GitHubRepo[], totalCount };
+  } catch (error) {
+    console.error("Error fetching repos:", error);
+    throw new Error("Failed to fetch repositories");
   }
-
-  return repos;
 }
 
 export async function createRepoWebhook(
   accessToken: string,
-  params: CreateWebhookParams
+  params: CreateWebhookParams,
 ): Promise<GitHubWebhook> {
+  const octokit = new Octokit({
+    auth: accessToken,
+  });
+
   const { owner, repo, config, events, active = true } = params;
 
-  const response = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/hooks`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-        "Content-Type": "application/json",
+  try {
+    const { data } = await octokit.rest.repos.createWebhook({
+      owner,
+      repo,
+      name: "web",
+      active,
+      events,
+      config: {
+        url: config.url,
+        content_type: config.content_type,
+        // secret: config.secret,
+        // insecure_ssl: config.insecure_ssl,
+        insecure_ssl: 0,
+        
       },
-      body: JSON.stringify({
-        name: "web",
-        active,
-        events,
-        config,
-      }),
-    }
-  );
+    });
 
-  if (!response.ok) {
-    const error = await response.json();
-    throw new Error(`Failed to create webhook: ${JSON.stringify(error)}`);
+    return data as GitHubWebhook;
+  } catch (error) {
+    console.error("Error creating webhook:", error);
+    throw new Error("Failed to create webhook");
   }
-
-  return response.json();
 }
 
 export async function getRepoWebhooks(
   accessToken: string,
   owner: string,
-  repo: string
+  repo: string,
 ): Promise<GitHubWebhook[]> {
-  const response = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/hooks`,
-    {
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-    }
-  );
+  const octokit = new Octokit({
+    auth: accessToken,
+  });
 
-  if (!response.ok) {
-    throw new Error(`GitHub API error: ${response.statusText}`);
+  try {
+    const { data } = await octokit.rest.repos.listWebhooks({
+      owner,
+      repo,
+    });
+
+    return data as GitHubWebhook[];
+  } catch (error) {
+    console.error("Error fetching webhooks:", error);
+    throw new Error("Failed to fetch webhooks");
   }
-
-  return response.json();
 }
 
 export async function deleteRepoWebhook(
   accessToken: string,
   owner: string,
   repo: string,
-  hookId: number
+  hookId: number,
 ): Promise<void> {
-  const response = await fetch(
-    `https://api.github.com/repos/${owner}/${repo}/hooks/${hookId}`,
-    {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        Accept: "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-      },
-    }
-  );
+  const octokit = new Octokit({
+    auth: accessToken,
+  });
 
-  if (!response.ok) {
-    throw new Error(`Failed to delete webhook: ${response.statusText}`);
+  try {
+    await octokit.rest.repos.deleteWebhook({
+      owner,
+      repo,
+      hook_id: hookId,
+    });
+  } catch (error) {
+    console.error("Error deleting webhook:", error);
+    throw new Error("Failed to delete webhook");
   }
 }
