@@ -1,7 +1,12 @@
+import redis from "@/src/lib/redis";
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "crypto";
 
-function verifySignature(payload: string, signature: string, secret: string): boolean {
+function verifySignature(
+  payload: string,
+  signature: string,
+  secret: string,
+): boolean {
   const hmac = crypto.createHmac("sha256", secret);
   const digest = "sha256=" + hmac.update(payload).digest("hex");
   return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(digest));
@@ -13,6 +18,9 @@ export async function POST(request: NextRequest) {
     const signature = request.headers.get("x-hub-signature-256");
     const event = request.headers.get("x-github-event");
     const delivery = request.headers.get("x-github-delivery");
+
+    // get redis clients
+    const redisClient = redis.connect();
 
     console.log("=".repeat(80));
     console.log("📦 GitHub Webhook Received");
@@ -27,7 +35,10 @@ export async function POST(request: NextRequest) {
       const isValid = verifySignature(body, signature, secret);
       if (!isValid) {
         console.error("❌ Invalid signature");
-        return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+        return NextResponse.json(
+          { error: "Invalid signature" },
+          { status: 401 },
+        );
       }
       console.log("✅ Signature verified");
     } else {
@@ -45,13 +56,42 @@ export async function POST(request: NextRequest) {
       console.log("Branch:", payload.ref?.replace("refs/heads/", ""));
       console.log("Commits:", payload.commits?.length || 0);
       console.log("Pusher:", payload.pusher?.name);
-      
+
       if (payload.commits && payload.commits.length > 0) {
         console.log("\n📋 Recent Commits:");
         payload.commits.slice(0, 3).forEach((commit: any, index: number) => {
-          console.log(`  ${index + 1}. ${commit.message} (${commit.id.substring(0, 7)})`);
+          console.log(
+            `  ${index + 1}. ${commit.message} (${commit.id.substring(0, 7)})`,
+          );
           console.log(`     Author: ${commit.author.name}`);
         });
+
+        const payloadEvent = {
+          id: payload.repository?.id || "unknown",
+          full_name: payload.repository?.full_name || "unknown",
+          clone_url: payload.repository?.clone_url || "unknown",
+          repo_ssh_url: payload.repository?.ssh_url || "unknown",
+          ref: payload.ref || "unknown",
+          after: payload.after || "unknown",
+        };
+
+        console.log("\n📤 Payload to Redis Stream:", { payloadEvent });
+
+        // #######################################
+        // ##### redis to propagate jobs
+        const res1 = await (
+          await redisClient
+        ).xAdd("webhooks-stream", "*", {
+          eventName: "Push",
+          id: payload.repository?.id || "unknown",
+          full_name: payload.repository?.full_name || "unknown",
+          clone_url: payload.repository?.clone_url || "unknown",
+          repo_ssh_url: payload.repository?.ssh_url || "unknown",
+          ref: payload.ref || "unknown",
+          after: payload.after || "unknown",
+          // few more things ...
+        });
+        console.log("Added to Redis Stream:", res1);
       }
     } else if (event === "pull_request") {
       console.log("\n🔀 Pull Request Event Details:");
@@ -62,23 +102,46 @@ export async function POST(request: NextRequest) {
       console.log("Author:", payload.pull_request?.user?.login);
       console.log("Base Branch:", payload.pull_request?.base?.ref);
       console.log("Head Branch:", payload.pull_request?.head?.ref);
+
+      // ##### redis to propagate jobs
+      const res1 = await (
+        await redisClient
+      ).xAdd("webhooks-stream", "*", {
+        eventName: "Pull Event",
+        ownwer: payload.repository?.owner?.login || "unknown",
+      });
+      console.log("Added to Redis Stream:", res1);
+    } else {
+      console.log("Unhandled event type:", event);
+
+      // ##### redis to propagate jobs
+      const res1 = await (
+        await redisClient
+      ).xAdd("webhooks-stream", "*", {
+        name: "WebHoook Created",
+        ownwer: payload.repository?.owner?.login || "unknown",
+      });
+      console.log("Added to Redis Stream:", res1);
     }
 
     console.log("\n📦 Full Payload:");
     console.log(JSON.stringify(payload, null, 2));
     console.log("=".repeat(80));
 
-    return NextResponse.json({ 
-      success: true, 
+    // after work done disconnect redis client
+    (await redisClient).disconnect();
+
+    return NextResponse.json({
+      success: true,
       message: "Webhook received",
       event,
-      delivery 
+      delivery,
     });
   } catch (error) {
     console.error("❌ Error processing webhook:", error);
     return NextResponse.json(
       { error: "Internal server error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

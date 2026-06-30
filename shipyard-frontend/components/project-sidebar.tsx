@@ -1,7 +1,6 @@
 "use client"
 
-import * as React from "react"
-import { Rocket, Webhook, Settings, Home } from "lucide-react"
+import { Home, KeyRound, Rocket, Settings, Webhook } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -16,31 +15,15 @@ import {
 import Link from "next/link"
 import { useParams } from "next/navigation"
 
-const items = [
-  {
-    title: "Deploy",
-    url: "#",
-    icon: Rocket,
-  },
-  {
-    title: "Create Webhooks",
-    url: "#",
-    icon: Webhook,
-  },
-  {
-    title: "Settings",
-    url: "#",
-    icon: Settings,
-  },
-]
-
 export function ProjectSidebar({ 
   onCreateWebhook, 
   onDeploy,
+  onCredentials,
   onSettings 
 }: { 
   onCreateWebhook: () => void; 
   onDeploy: () => void;
+  onCredentials: () => void;
   onSettings: () => void;
 }) {
   const params = useParams();
@@ -89,6 +72,12 @@ export function ProjectSidebar({
                 <SidebarMenuButton onClick={onCreateWebhook}>
                   <Webhook className="size-4" />
                   <span>Create Webhooks</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton onClick={onCredentials}>
+                  <KeyRound className="size-4" />
+                  <span>Credentials</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>

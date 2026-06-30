@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { auth } from "@/src/lib/auth";
-import { getAccessTokenFromDB } from "@/src/lib/db";
+import { getAccessTokenFromDB } from "@/src/lib/db/user";
+import { storeRepositoryIntegration, getRepositoryIntegrationsByUserId } from "@/src/lib/db/repoIntegration";
 import { createRepoWebhook } from "@/src/lib/github-webhook";
-import prisma from "@/src/lib/prisma";
 
 export async function POST(request: NextRequest) {
   try {
@@ -66,18 +66,17 @@ export async function POST(request: NextRequest) {
     });
 
     // Create entry in database
-    const repoIntegration = await prisma.repositoryIntegration.create({
-      data: {
-        id: `${username}-${repoName}-${Date.now()}`,
-        userId: session.user.id,
-        githubRepoId: BigInt(webhook.id),
-        owner: username,
-        repoName: repoName,
-        fullName: `${username}/${repoName}`,
-        webhookId: BigInt(webhook.id),
-        status: "RUNNING",
-        updatedAt: new Date(),
-      },
+    const repoIntegration = await storeRepositoryIntegration({
+      userId: session.user.id,
+      githubRepoId: BigInt(webhook.id),
+      owner: username,
+      repoName: repoName,
+      fullName: `${username}/${repoName}`,
+      cloneUrl: "",
+      sshCloneUrl: "",
+      defaultBranch: "main",
+      webhookId: BigInt(webhook.id),
+      status: "RUNNING",
     });
 
     return NextResponse.json({
@@ -110,14 +109,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const integrations = await prisma.repositoryIntegration.findMany({
-      where: {
-        userId: session.user.id,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+    const integrations = await getRepositoryIntegrationsByUserId(session.user.id);
 
     return NextResponse.json({
       integrations: integrations.map((integration) => ({

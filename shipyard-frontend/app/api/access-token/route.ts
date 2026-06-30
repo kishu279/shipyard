@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAccessTokenFromDB } from "@/src/lib/db";
+import { getAccessTokenFromDB } from "@/src/lib/db/user";
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);

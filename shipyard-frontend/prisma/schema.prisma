@@ -7,25 +7,183 @@ datasource db {
   provider = "postgresql"
 }
 
-model RepositoryIntegration {
-  id           String        @id
-  userId       String
-  githubRepoId BigInt
-  owner        String
-  repoName     String
-  fullName     String
-  webhookId    BigInt
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime
-  status       WebhookStatus
-  user         user          @relation(fields: [userId], references: [id])
+//////////////////////////////////////////////////////
+// User
+//////////////////////////////////////////////////////
+
+model user {
+  id            String   @id
+  name          String
+  email         String   @unique
+  emailVerified Boolean  @default(false)
+  image         String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime
+
+  RepositoryIntegration RepositoryIntegration[]
+  servers               Server[]
+  deployments           Deployment[]
+
+  account account[]
+  session session[]
 }
 
+//////////////////////////////////////////////////////
+// GitHub Repository
+//////////////////////////////////////////////////////
+
+model RepositoryIntegration {
+  id String @id @default(cuid())
+
+  userId String
+  user   user @relation(fields: [userId], references: [id])
+
+  githubRepoId BigInt
+
+  owner    String
+  repoName String
+  fullName String
+
+  cloneUrl    String
+  sshCloneUrl String
+
+  defaultBranch String
+
+  webhookId BigInt
+
+  status WebhookStatus
+
+  deploymentConfigs DeploymentConfig[]
+  deployments       Deployment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, githubRepoId])
+}
+
+//////////////////////////////////////////////////////
+// Deployment Server
+//////////////////////////////////////////////////////
+
+model Server {
+  id String @id @default(cuid())
+
+  userId String
+  user   user @relation(fields: [userId], references: [id])
+
+  name String
+
+  host String
+  port Int    @default(22)
+
+  username String
+
+  privateKey String
+
+  deploymentConfigs DeploymentConfig[]
+  deployments       Deployment[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+//////////////////////////////////////////////////////
+// Repository Deployment Settings
+//////////////////////////////////////////////////////
+
+model DeploymentConfig {
+  id String @id @default(cuid())
+
+  repositoryId String
+  repository   RepositoryIntegration @relation(fields: [repositoryId], references: [id])
+
+  serverId String
+  server   Server @relation(fields: [serverId], references: [id])
+
+  branch String
+
+  autoDeploy Boolean @default(true)
+
+  dockerfilePath String
+
+  containerName String
+
+  environment DeploymentEnvironment
+
+  buildCommand String?
+
+  runCommand String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([repositoryId, serverId, environment])
+}
+
+//////////////////////////////////////////////////////
+// Deployment History
+//////////////////////////////////////////////////////
+
+model Deployment {
+  id String @id @default(cuid())
+
+  userId String
+  user   user @relation(fields: [userId], references: [id])
+
+  repositoryId String
+  repository   RepositoryIntegration @relation(fields: [repositoryId], references: [id])
+
+  serverId String
+  server   Server @relation(fields: [serverId], references: [id])
+
+  commitSha String
+
+  branch String
+
+  status DeploymentStatus
+
+  triggerType TriggerType
+
+  startedAt DateTime @default(now())
+
+  completedAt DateTime?
+
+  duration Int?
+
+  logs DeploymentLog[]
+}
+
+//////////////////////////////////////////////////////
+// Deployment Logs
+//////////////////////////////////////////////////////
+
+model DeploymentLog {
+  id String @id @default(cuid())
+
+  deploymentId String
+  deployment   Deployment @relation(fields: [deploymentId], references: [id], onDelete: Cascade)
+
+  level LogLevel
+
+  message String
+
+  createdAt DateTime @default(now())
+}
+
+//////////////////////////////////////////////////////
+// Better Auth Tables
+//////////////////////////////////////////////////////
+
 model account {
-  id                    String    @id
+  id                    String @id
   accountId             String
   providerId            String
-  userId                String
+
+  userId String
+  user   user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   accessToken           String?
   refreshToken          String?
   idToken               String?
@@ -33,52 +191,77 @@ model account {
   refreshTokenExpiresAt DateTime?
   scope                 String?
   password              String?
-  createdAt             DateTime  @default(now())
-  updatedAt             DateTime
-  user                  user      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId])
 }
 
 model session {
-  id        String   @id
+  id String @id
+
   expiresAt DateTime
-  token     String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime
+
+  token String @unique
+
   ipAddress String?
   userAgent String?
-  userId    String
-  user      user     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   user @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([userId])
 }
 
-model user {
-  id                    String                  @id
-  name                  String
-  email                 String                  @unique
-  emailVerified         Boolean                 @default(false)
-  image                 String?
-  createdAt             DateTime                @default(now())
-  updatedAt             DateTime
-  RepositoryIntegration RepositoryIntegration[]
-  account               account[]
-  session               session[]
-}
-
 model verification {
-  id         String   @id
+  id String @id
+
   identifier String
-  value      String
-  expiresAt  DateTime
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime
+
+  value String
+
+  expiresAt DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([identifier])
 }
 
+//////////////////////////////////////////////////////
+// Enums
+//////////////////////////////////////////////////////
+
 enum WebhookStatus {
   RUNNING
   STOP
+}
+
+enum DeploymentEnvironment {
+  DEVELOPMENT
+  STAGING
+  PRODUCTION
+}
+
+enum DeploymentStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+  ROLLBACK
+}
+
+enum TriggerType {
+  WEBHOOK
+  MANUAL
+}
+
+enum LogLevel {
+  INFO
+  WARNING
+  ERROR
 }

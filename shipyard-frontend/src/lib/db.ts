@@ -1,18 +1,5 @@
-import prisma from "./prisma";
+// Re-export all database functions from organized db folder
+export * from "./db/user";
+export * from "./db/userCredentials";
+export * from "./db/repoIntegration";
 
-export const getAccessTokenFromDB = async (email: string) => {
-  const response = await prisma.user.findUnique({
-    where: {
-      email: email,
-    },
-    include: {
-      account: {
-        select: {
-          accessToken: true,
-        },
-      },
-    },
-  });
-
-  return response;
-};

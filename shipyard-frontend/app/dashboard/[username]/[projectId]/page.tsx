@@ -15,13 +15,29 @@ import {
   BreadcrumbPage,
   BreadcrumbSeparator,
 } from "@/components/ui/breadcrumb";
+import { Input } from "@/components/ui/input";
 import { useParams, useRouter } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Rocket, Webhook as WebhookIcon } from "lucide-react";
+import { KeyRound, Rocket, Webhook as WebhookIcon } from "lucide-react";
 import { useSession } from "@/src/lib/auth-client";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
+
+type WebhookIntegration = {
+  id: string;
+  repoName: string;
+  status: string;
+  [key: string]: unknown;
+};
+
+type Credentials = {
+  id: string;
+  serverId: string;
+  serverName: string;
+  host: string;
+  [key: string]: unknown;
+};
 
 export default function ProjectDetailsPage() {
   const params = useParams();
@@ -29,10 +45,12 @@ export default function ProjectDetailsPage() {
   const { data: session, isPending } = useSession();
   const username = params.username as string;
   const projectId = params.projectId as string;
-  const [loadingToken, setLoadingToken] = useState(false);
   const [creatingWebhook, setCreatingWebhook] = useState(false);
   const [activeSection, setActiveSection] = useState<string>("overview");
-  const [webhooks, setWebhooks] = useState<any[]>([]);
+  const [webhooks, setWebhooks] = useState<WebhookIntegration[]>([]);
+  const [credentials, setCredentials] = useState<Credentials[]>([]);
+  const [hasWebhook, setHasWebhook] = useState(false);
+  const [hasCredentials, setHasCredentials] = useState(false);
 
   useEffect(() => {
     if (!isPending && !session) {
@@ -43,24 +61,38 @@ export default function ProjectDetailsPage() {
   }, [session, isPending, router]);
 
   useEffect(() => {
-    async function fetchWebhooks() {
+    async function fetchData() {
       if (!session) return;
 
       try {
-        const response = await fetch("/api/webhooks");
-        if (response.ok) {
-          const data = await response.json();
-          setWebhooks(data.integrations || []);
+        const [webhooksRes, credentialsRes] = await Promise.all([
+          fetch("/api/webhooks"),
+          fetch("/api/credentials"),
+        ]);
+
+        if (webhooksRes.ok) {
+          const data = (await webhooksRes.json()) as {
+            integrations?: WebhookIntegration[];
+          };
+          const allWebhooks = data.integrations || [];
+          setWebhooks(allWebhooks);
+          setHasWebhook(allWebhooks.some((w) => w.repoName === projectId));
+        }
+
+        if (credentialsRes.ok) {
+          const data = (await credentialsRes.json()) as Credentials[];
+          setCredentials(data);
+          setHasCredentials(data.length > 0);
         }
       } catch (error) {
-        console.error("Failed to fetch webhooks:", error);
+        console.error("Failed to fetch data:", error);
       }
     }
 
     if (session) {
-      fetchWebhooks();
+      fetchData();
     }
-  }, [session]);
+  }, [session, projectId]);
 
   const handleCreateWebhook = async () => {
     setCreatingWebhook(true);
@@ -82,8 +114,11 @@ export default function ProjectDetailsPage() {
         throw new Error(error.error || "Failed to create webhook");
       }
 
-      const data = await response.json();
+      const data = (await response.json()) as {
+        integration: WebhookIntegration;
+      };
       setWebhooks((prev) => [data.integration, ...prev]);
+      setHasWebhook(true);
       toast.success("Webhook created successfully!", { id: loadingToast });
     } catch (error) {
       console.error("Failed to create webhook:", error);
@@ -96,7 +131,7 @@ export default function ProjectDetailsPage() {
     }
   };
 
-  if (isPending || loadingToken) {
+  if (isPending) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         Loading...
@@ -113,6 +148,7 @@ export default function ProjectDetailsPage() {
       <ProjectSidebar
         onCreateWebhook={() => setActiveSection("webhooks")}
         onDeploy={() => setActiveSection("deploy")}
+        onCredentials={() => setActiveSection("credentials")}
         onSettings={() => setActiveSection("settings")}
       />
       <SidebarInset>
@@ -166,7 +202,7 @@ export default function ProjectDetailsPage() {
                 <div className="rounded-xl border bg-card p-6 shadow-sm">
                   <h3 className="font-semibold mb-2">Webhooks</h3>
                   <p className="text-sm text-muted-foreground">
-                    3 active webhooks configured.
+                    {hasWebhook ? "Webhook configured" : "No webhook configured"}
                   </p>
                 </div>
                 <div className="rounded-xl border bg-card p-6 shadow-sm">
@@ -178,7 +214,7 @@ export default function ProjectDetailsPage() {
               <div className="mt-8 rounded-xl border p-8 bg-muted/20 flex flex-col items-center justify-center text-center">
                 <h3 className="text-xl font-bold mb-2">Deployment History</h3>
                 <p className="text-muted-foreground mb-4">
-                  You haven't made any deployments yet to this project.
+                  You have not made any deployments yet to this project.
                 </p>
                 <Button variant="outline">Learn more about deployments</Button>
               </div>
@@ -230,11 +266,165 @@ export default function ProjectDetailsPage() {
                     </div>
                     <Button
                       onClick={handleCreateWebhook}
-                      disabled={creatingWebhook}
+                      disabled={creatingWebhook || hasWebhook}
                       size="lg"
                     >
-                      {creatingWebhook ? "Creating..." : "Create Webhook"}
+                      {hasWebhook
+                        ? "Webhook Already Exists"
+                        : creatingWebhook
+                          ? "Creating..."
+                          : "Create Webhook"}
                     </Button>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+
+          {activeSection === "credentials" && (
+            <>
+              <div className="space-y-1">
+                <h1 className="text-3xl font-bold tracking-tight">
+                  Credentials
+                </h1>
+                <p className="text-muted-foreground">
+                  Manage deployment credentials for {projectId}
+                </p>
+              </div>
+
+              <Separator className="my-4" />
+
+              <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+                <div className="rounded-xl border bg-card p-6 shadow-sm">
+                  <div className="mb-6 flex items-start gap-4">
+                    <div className="rounded-lg bg-primary/10 p-3">
+                      <KeyRound className="h-6 w-6 text-primary" />
+                    </div>
+                    <div>
+                      <h3 className="text-xl font-semibold">Server</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Add the server access details this project will use
+                        during deployment.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-5 md:grid-cols-2">
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="server-id"
+                        className="text-sm font-medium"
+                      >
+                        Server ID
+                      </label>
+                      <Input
+                        id="server-id"
+                        placeholder="srv_01"
+                        type="text"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="owner-id"
+                        className="text-sm font-medium"
+                      >
+                        Owner ID
+                      </label>
+                      <Input
+                        id="owner-id"
+                        placeholder="owner_01"
+                        type="text"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="server-name"
+                        className="text-sm font-medium"
+                      >
+                        Server Name
+                      </label>
+                      <Input
+                        id="server-name"
+                        placeholder="Production Server"
+                        type="text"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="server-host"
+                        className="text-sm font-medium"
+                      >
+                        Host
+                      </label>
+                      <Input
+                        id="server-host"
+                        placeholder="192.168.1.10 or example.com"
+                        type="text"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="server-port"
+                        className="text-sm font-medium"
+                      >
+                        Port
+                      </label>
+                      <Input id="server-port" placeholder="22" type="number" />
+                    </div>
+                    <div className="space-y-2">
+                      <label
+                        htmlFor="server-username"
+                        className="text-sm font-medium"
+                      >
+                        Username
+                      </label>
+                      <Input
+                        id="server-username"
+                        placeholder="ubuntu"
+                        type="text"
+                      />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <label
+                        htmlFor="private-key"
+                        className="text-sm font-medium"
+                      >
+                        Private Key (encrypted)
+                      </label>
+                      <Input
+                        id="private-key"
+                        accept=".pem,.key,.txt"
+                        type="file"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex justify-end">
+                    <Button disabled>Save Credentials</Button>
+                  </div>
+                </div>
+
+                <div className="rounded-xl border bg-muted/20 p-6">
+                  <h3 className="font-semibold">Server Summary</h3>
+                  <div className="mt-4 space-y-3 text-sm">
+                    <div className="flex items-center justify-between gap-4">
+                      <span className="text-muted-foreground">Status</span>
+                      <Badge variant={hasCredentials ? "default" : "outline"}>
+                        {hasCredentials ? `${credentials.length} saved` : "Not saved"}
+                      </Badge>
+                    </div>
+                    {hasCredentials && credentials[0] && (
+                      <>
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-muted-foreground">Server ID</span>
+                          <Badge variant="outline">{credentials[0].serverId}</Badge>
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-muted-foreground">Host</span>
+                          <Badge variant="outline">{credentials[0].host}</Badge>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
