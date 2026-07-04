@@ -1,0 +1,19 @@
+{
+  "name": "backend-websocket",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "script": {},
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "better-auth": "^1.6.23",
+    "dotenv": "^17.4.2",
+    "redis": "^6.1.0",
+    "socket.io": "^4.8.3"
+  }
+}
