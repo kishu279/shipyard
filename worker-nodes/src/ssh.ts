@@ -31,7 +31,7 @@ export async function disconnectSSH() {
 
 export async function runCommand(command: string, cwd = "/home") {
   const result = await ssh.execCommand(command, { cwd });
-  if (result.stderr) throw new Error(result.stderr);
+  if (result.code !== 0) throw new Error(result.stderr || result.stdout);
   return result.stdout;
 }
 
@@ -92,5 +92,113 @@ export async function checkDockerInstalled() {
     };
   } catch (error) {
     throw new Error("Docker is not installed on the remote server.");
+  }
+}
+
+const CLONE_DIR = "/home/ubuntu";
+
+function getRepoPath(repoUrl: string) {
+  const repoName = repoUrl.split("/").pop()?.replace(".git", "") ?? "repo";
+  return `${CLONE_DIR}/${repoName}`;
+}
+
+/**
+ * check if the repo has already been cloned on the remote server.
+ * @param repoPath
+ * @returns
+ */
+export async function checkRepoExists(repoPath: string) {
+  const result = await ssh.execCommand(`test -d ${repoPath}/.git`);
+  return result.code === 0;
+}
+
+/**
+ * cloning the repo on the aws console
+ * @param repoUrl
+ * @returns
+ */
+export async function cloneRepository(repoUrl: string) {
+  const repoPath = getRepoPath(repoUrl);
+  try {
+    const result = await ssh.execCommand(`git clone ${repoUrl}`, {
+      cwd: CLONE_DIR,
+    });
+
+    if (result.code === 0) {
+      console.log(`Repository cloned successfully to ${repoPath}`);
+      return { output: result.stdout, repoPath };
+    }
+
+    throw new Error(result.stderr);
+  } catch (error) {
+    throw new Error(`Failed to clone repository: ${error}`);
+  }
+}
+
+/**
+ * pulling the latest changes for an already cloned repo on the remote server.
+ * @param repoPath
+ * @returns
+ */
+export async function pullRepository(repoPath: string) {
+  try {
+    const result = await ssh.execCommand("git pull", { cwd: repoPath });
+
+    if (result.code === 0) {
+      console.log(`Repository pulled successfully at ${repoPath}`);
+      return { output: result.stdout, repoPath };
+    }
+
+    throw new Error(result.stderr);
+  } catch (error) {
+    throw new Error(`Failed to pull repository: ${error}`);
+  }
+}
+
+/**
+ * clone the repo if it doesn't exist yet on the remote server, otherwise pull the latest changes.
+ * @param repoUrl
+ * @returns
+ */
+export async function cloneOrPullRepository(repoUrl: string) {
+  const repoPath = getRepoPath(repoUrl);
+  const exists = await checkRepoExists(repoPath);
+
+  if (exists) {
+    return pullRepository(repoPath);
+  }
+
+  return cloneRepository(repoUrl);
+}
+
+/**
+ * docker build the image on the remote server via SSH.
+ * @param dockerfilePath
+ * @param imageName
+ * @returns
+ */
+export async function buildDockerImage(repoPath: string, imageName: string) {
+  try {
+    const response = await runCommand(
+      `docker build -t ${imageName} .`,
+      repoPath,
+    );
+    return response;
+  } catch (error) {
+    throw new Error(`Failed to build docker image: ${error}`);
+  }
+}
+
+export async function runDockerContainer(
+  imageName: string,
+  containerName: string,
+) {
+  try {
+    const response = await runCommand(
+      `docker run -d -p 3000:3000 --name ${containerName} ${imageName}`,
+    );
+    return response;
+  } catch (error) {
+    throw new Error(`Failed to run docker container: ${error}`);
   }
 }

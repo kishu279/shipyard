@@ -1,7 +1,10 @@
 import type { RedisClientType } from "redis";
-import redis from "./redis";
+import redis, { publishEvent } from "./redis";
 import {
   checkDockerInstalled,
+  cloneOrPullRepository,
+  buildDockerImage,
+  runDockerContainer,
   connectSSH,
   disconnectSSH,
   getDeviceInfo,
@@ -19,41 +22,32 @@ async function main() {
   try {
     const stream = "message-brokers";
 
-    const deviceInfo = await getDeviceInfo();
-    console.log("Device Info:", deviceInfo);
-    // emit an event to the server with the device info
-    let message = await redis.sendCommand([
-      "XADD",
-      stream,
-      "*",
-      "deviceInfo",
-      JSON.stringify(deviceInfo),
-    ]);
-    console.log("Message sent to Redis stream:", message);
+    while (true) {
+      const deviceInfo = await getDeviceInfo();
+      await publishEvent(stream, "deviceInfo", deviceInfo);
+      console.log("deviceInfo:", deviceInfo);
 
-    const response = await redis.sendCommand(["PING"]);
-    console.log("Redis PING response:", response);
+      const dockerInfo = await checkDockerInstalled();
+      await publishEvent(stream, "dockerInfo", dockerInfo);
+      console.log("dockerInfo:", dockerInfo);
 
-    let message1 = await redis.sendCommand([
-      "XADD",
-      stream,
-      "*",
-      "message",
-      "Hello from the worker!",
-    ]);
-    console.log("Message sent to Redis stream:", message1);
+      const repoUrl = process.env.REPO_URL!;
+      const cloneResult = await cloneOrPullRepository(repoUrl);
+      await publishEvent(stream, "cloneRepository", { repoUrl, output: cloneResult.output });
+      console.log("cloneRepository:", cloneResult);
 
-    const dockerInfo = await checkDockerInstalled();
-    console.log("Docker Info:", dockerInfo);
-    // emit an event to the server with the docker info
+      const imageName = process.env.DOCKER_IMAGE_NAME!;
+      const buildResult = await buildDockerImage(cloneResult.repoPath, imageName);
+      await publishEvent(stream, "buildDockerImage", { imageName, output: buildResult });
+      console.log("buildDockerImage:", buildResult);
 
-    const response1 = await redis.sendCommand(["PING"]);
-    console.log("Redis PING response:", response1);
+      const containerName = process.env.CONTAINER_NAME!;
+      const runResult = await runDockerContainer(imageName, containerName);
+      await publishEvent(stream, "runDockerContainer", { containerName, output: runResult });
+      console.log("runDockerContainer:", runResult);
 
-    // while (true) {
-    //   const job = await pickOneJob(redis as unknown as RedisClientType);
-    //   console.log(job);
-    // }
+      break;
+    }
   } catch (error) {
     console.error(error);
   } finally {
