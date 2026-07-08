@@ -189,16 +189,96 @@ export async function buildDockerImage(repoPath: string, imageName: string) {
   }
 }
 
+/**
+ * check if a container with the given name already exists (running or stopped).
+ * @param containerName
+ * @returns
+ */
+export async function checkContainerExists(containerName: string) {
+  const result = await ssh.execCommand(
+    `docker ps -a -q --filter name=^/${containerName}$`,
+  );
+  return result.stdout.trim().length > 0;
+}
+
+/**
+ * stop and remove a container by name, ignoring errors if it doesn't exist.
+ * @param containerName
+ * @returns
+ */
+export async function removeContainer(containerName: string) {
+  await ssh.execCommand(`docker rm -f ${containerName}`);
+}
+
 export async function runDockerContainer(
   imageName: string,
   containerName: string,
 ) {
   try {
+    if (await checkContainerExists(containerName)) {
+      console.log(`Container ${containerName} already exists, removing it`);
+      await removeContainer(containerName);
+    }
+
     const response = await runCommand(
       `docker run -d -p 3000:3000 --name ${containerName} ${imageName}`,
     );
     return response;
   } catch (error) {
     throw new Error(`Failed to run docker container: ${error}`);
+  }
+}
+
+/**
+ * install nginx on the remote server via SSH.
+ * @returns
+ */
+export async function installNginx() {
+  try {
+    await runCommand("sudo apt-get update -y");
+    const response = await runCommand("sudo apt-get install -y nginx");
+    return response;
+  } catch (error) {
+    throw new Error(`Failed to install nginx: ${error}`);
+  }
+}
+
+const NGINX_SITE_PATH = "/etc/nginx/sites-available/nextjs";
+const NGINX_ENABLED_PATH = "/etc/nginx/sites-enabled/nextjs";
+
+/**
+ * write the nginx reverse proxy config for the app, enable the site, and reload nginx.
+ * @param serverName the public IP or domain name to serve
+ * @param proxyPort the local port the app is listening on
+ * @returns
+ */
+export async function configureNginx(serverName: string, proxyPort = 3000) {
+  const config = `server {
+    listen 80;
+    server_name ${serverName};
+
+    location / {
+        proxy_pass http://127.0.0.1:${proxyPort};
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+`;
+
+  try {
+    const writeResult = await ssh.execCommand(
+      `sudo tee ${NGINX_SITE_PATH} > /dev/null << 'EOF'\n${config}EOF`,
+    );
+    if (writeResult.code !== 0) throw new Error(writeResult.stderr);
+
+    await runCommand(`sudo ln -sf ${NGINX_SITE_PATH} ${NGINX_ENABLED_PATH}`);
+    await runCommand("sudo nginx -t");
+    const response = await runCommand("sudo systemctl restart nginx");
+    return response;
+  } catch (error) {
+    throw new Error(`Failed to configure nginx: ${error}`);
   }
 }

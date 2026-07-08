@@ -5,6 +5,8 @@ import {
   cloneOrPullRepository,
   buildDockerImage,
   runDockerContainer,
+  installNginx,
+  configureNginx,
   connectSSH,
   disconnectSSH,
   getDeviceInfo,
@@ -45,6 +47,15 @@ async function main() {
       const runResult = await runDockerContainer(imageName, containerName);
       await publishEvent(stream, "runDockerContainer", { containerName, output: runResult });
       console.log("runDockerContainer:", runResult);
+
+      const nginxInstallResult = await installNginx();
+      await publishEvent(stream, "installNginx", { output: nginxInstallResult });
+      console.log("installNginx:", nginxInstallResult);
+
+      const serverName = process.env.SSH_HOST!;
+      const nginxConfigResult = await configureNginx(serverName);
+      await publishEvent(stream, "configureNginx", { serverName, output: nginxConfigResult });
+      console.log("configureNginx:", nginxConfigResult);
 
       break;
     }
