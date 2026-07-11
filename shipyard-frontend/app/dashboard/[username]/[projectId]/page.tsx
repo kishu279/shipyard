@@ -21,6 +21,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { KeyRound, Rocket, Webhook as WebhookIcon } from "lucide-react";
 import { useSession } from "@/src/lib/auth-client";
+import { deployments, type Deployment } from "@/data/deployments";
+import { DeploymentAccordion } from "@/components/deployment/deployment-accordion";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -45,6 +47,9 @@ export default function ProjectDetailsPage() {
   const { data: session, isPending } = useSession();
   const username = params.username as string;
   const projectId = params.projectId as string;
+  const [selectedDeployment] = useState<Deployment>(
+    () => deployments[0]
+  );
   const [creatingWebhook, setCreatingWebhook] = useState(false);
   const [activeSection, setActiveSection] = useState<string>("overview");
   const [webhooks, setWebhooks] = useState<WebhookIntegration[]>([]);
@@ -150,6 +155,7 @@ export default function ProjectDetailsPage() {
         onDeploy={() => setActiveSection("deploy")}
         onCredentials={() => setActiveSection("credentials")}
         onSettings={() => setActiveSection("settings")}
+        onLogs={() => setActiveSection("logs")}
       />
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
@@ -449,6 +455,24 @@ export default function ProjectDetailsPage() {
                   Deploy functionality coming soon.
                 </p>
               </div>
+            </>
+          )}
+
+          {activeSection === "logs" && (
+            <>
+              <div className="space-y-1">
+                <h1 className="text-3xl font-bold tracking-tight">Deployment</h1>
+                <p className="text-muted-foreground">
+                  Deployment details for {projectId}
+                </p>
+              </div>
+
+              <Separator className="my-4" />
+
+              <DeploymentAccordion
+                deployment={selectedDeployment}
+                projectId={projectId}
+              />
             </>
           )}
 

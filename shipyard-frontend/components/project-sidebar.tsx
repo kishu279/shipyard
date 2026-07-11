@@ -1,6 +1,6 @@
 "use client"
 
-import { Home, KeyRound, Rocket, Settings, Webhook } from "lucide-react"
+import { Home, KeyRound, Rocket, ScrollText, Settings, Webhook } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -19,12 +19,14 @@ export function ProjectSidebar({
   onCreateWebhook, 
   onDeploy,
   onCredentials,
-  onSettings 
+  onSettings,
+  onLogs,
 }: { 
   onCreateWebhook: () => void; 
   onDeploy: () => void;
   onCredentials: () => void;
   onSettings: () => void;
+  onLogs: () => void;
 }) {
   const params = useParams();
   const username = params.username as string;
@@ -78,6 +80,12 @@ export function ProjectSidebar({
                 <SidebarMenuButton onClick={onCredentials}>
                   <KeyRound className="size-4" />
                   <span>Credentials</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton onClick={onLogs}>
+                  <ScrollText className="size-4" />
+                  <span>Deployment Logs</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
               <SidebarMenuItem>

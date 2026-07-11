@@ -38,11 +38,13 @@ async function consumeRedisEvents(redis: RedisClientType) {
     const [event, payload] = fields;
     // console.log("payload: ", { payload });
 
-    const payloadJson = JSON.parse(payload);
+    const payloadJson =
+      typeof payload === "string" ? JSON.parse(payload) : payload;
     // console.log(`Received event: ${event} with payload: ${payloadJson}`);
 
     const objectKeys = Object.keys(payloadJson);
     // console.log("objectKeys: ", { objectKeys });
+    console.log(`Received event: ${event} with payload keys: ${payload}}`);
 
     // TODO: route to user socket once producer sends userId
     // users.get(payload.userId)?.emit(event, payloadJson);
@@ -57,13 +59,14 @@ export async function setupWebSocket(
   redis: RedisClientType,
 ) {
   const io = new Server(httpServer, {
+    
     cors: {
       origin: process.env.BETTER_AUTH_URL,
-      credentials: true,
+      credentials: true
     },
   });
 
-  io.use(wsAuth);
+  // io.use(wsAuth);
   io.on("connection", registerHandlers);
 
   console.log("wired up the sockets");
